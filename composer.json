@@ -1,0 +1,33 @@
+{
+  "name": "upfor/forkman",
+  "type": "library",
+  "description": "A lightest process manager",
+  "keywords": [
+    "framework",
+    "php",
+    "upfor",
+    "fork"
+  ],
+  "homepage": "https://github.com/upfor/forkman",
+  "license": "MIT",
+  "authors": [
+    {
+      "name": "Upfor Club",
+      "email": "team@upfor.club",
+      "homepage": "https://upfor.club"
+    },
+    {
+      "name": "Shocker Li",
+      "email": "shockerli@upfor.club",
+      "homepage": "http://shockerli.net"
+    }
+  ],
+  "require": {
+    "php": ">=5.5"
+  },
+  "autoload": {
+    "psr-4": {
+      "Upfor\\ForkMan\\": "src/"
+    }
+  }
+}
