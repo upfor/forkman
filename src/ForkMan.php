@@ -11,7 +11,7 @@ class ForkMan
     /**
      * @var string Slave process identifier
      */
-    public $slaveLabel = '-slave';
+    public static $slaveLabel = '-slave';
 
     /**
      * @var string Slave process command
@@ -26,7 +26,7 @@ class ForkMan
     /**
      * @var int Process number
      */
-    public $poolSize = 2;
+    public $procNum = 2;
 
     /**
      * @var string Slave command prefix
@@ -36,7 +36,7 @@ class ForkMan
     /**
      * @var array Pool of process
      */
-    private $processPool = [];
+    private $procPool = [];
 
     /**
      * @var bool Is a slave process
@@ -59,10 +59,10 @@ class ForkMan
     private $slaveHandler;
 
     /**
-     * @param  int    $poolSize
+     * @param  int    $procNum
      * @param  string $name
      */
-    public function __construct($poolSize = 2, $name = '')
+    public function __construct($procNum = 2, $name = '')
     {
         if (empty($name)) {
             $name = explode('\\', __CLASS__);
@@ -70,9 +70,9 @@ class ForkMan
         }
 
         $this->name = $name;
-        $this->poolSize = $poolSize;
+        $this->procNum = $procNum;
 
-        if (!empty($_SERVER['argv']) && false !== array_search($this->slaveLabel, $_SERVER['argv'])) {
+        if (!empty($_SERVER['argv']) && false !== array_search(static::$slaveLabel, $_SERVER['argv'])) {
             $this->isSlave = true;
         }
     }
@@ -87,7 +87,7 @@ class ForkMan
     {
         if (!$this->isSlave) {
             $this->masterHandler = $masterHandler;
-            $this->createMaster($this->poolSize);
+            $this->createMaster($this->procNum);
         }
 
         return $this;
@@ -102,13 +102,13 @@ class ForkMan
     {
         !$this->slaveCmd && $this->slaveCmd = $this->getCmd();
 
-        for ($i = 0; $i < $limit; $i++) {
-            $this->processPool[] = $this->createProcess();
-        }
-
         @cli_set_process_title($this->name . ':' . 'master');
 
         if (is_callable($this->masterHandler)) {
+            for ($i = 0; $i < $limit; $i++) {
+                $this->procPool[] = $this->createProcess();
+            }
+
             call_user_func($this->masterHandler, $this);
         }
     }
@@ -120,14 +120,17 @@ class ForkMan
      */
     private function getCmd()
     {
-        $prefix = empty($this->prefix) ? (isset($_SERVER['_']) ? $_SERVER['_'] : '/usr/bin/env php') : $this->prefix;
+        $prefix = empty($this->prefix) ? (!empty($_SERVER['_']) ? realpath($_SERVER['_']) : '/usr/bin/env php') : $this->prefix;
         $mixed = array_merge([$prefix, $_SERVER['PHP_SELF']], $_SERVER['argv']);
+        $mixed = array_filter($mixed, function ($item) {
+            return strpos($item, './') !== 0;
+        });
 
         return implode(' ', array_unique($mixed));
     }
 
     /**
-     * Create process
+     * Create slave process
      *
      * @return array
      */
@@ -138,12 +141,19 @@ class ForkMan
             ['pipe', 'w'], // std output
             ['pipe', 'w'], // std error
         ];
-        $res = proc_open($this->slaveCmd . ' ' . $this->slaveLabel, $desc, $pipes, getcwd());
-        $pid = proc_get_status($res)['pid'];
+        $res = proc_open($this->slaveCmd . ' ' . static::$slaveLabel, $desc, $pipes, getcwd());
+
+        $status = proc_get_status($res);
+        if (!isset($status['pid'])) {
+            $this->log('process create failed');
+            return $this->createProcess();
+        }
+
+        $pid = $status['pid'];
         $process = [
             'res' => $res,
             'pipes' => $pipes,
-            'status' => true, // true:idle
+            'idle' => true, // process is idling
             'pid' => $pid,
             'callback' => null, // call when the slave process finished
         ];
@@ -159,17 +169,19 @@ class ForkMan
     /**
      * Logger
      *
-     * @param  string $str
+     * @param  mixed $info
      */
-    public function log($str)
+    public function log($info)
     {
-        if (is_array($str)) {
-            $str = json_encode($str, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+        if (is_object($info)) {
+            $info = var_export($info, true);
+        } elseif (!is_scalar($info)) {
+            $info = json_encode($info, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
         }
         $args = func_get_args();
-        $line = count($args) > 1 ? call_user_func_array('sprintf', $args) : $str;
+        $line = count($args) > 1 ? call_user_func_array('sprintf', $args) : $info;
 
-        $line = str_pad(date('Y-m-d H:i:s') . ' [' . ($this->isSlave ? 'slave' : 'master') . ':' . getmypid() . '] ', 16, ' ', STR_PAD_RIGHT) . $line . "\n";
+        $line = date('Y-m-d H:i:s') . ' ' . str_pad('[' . ($this->isSlave ? 'slave' : 'master') . ':' . getmypid() . '] ', 16, ' ', STR_PAD_RIGHT) . $line . "\n";
 
         error_log($line, 3, $this->isSlave ? 'php://stderr' : 'php://stdout');
     }
@@ -222,6 +234,7 @@ class ForkMan
      *
      * @param  mixed    $data
      * @param  callable $callback
+     * @return int
      */
     public function submit($data, $callback = null)
     {
@@ -234,7 +247,10 @@ class ForkMan
 
             // send to slave process, with length and content
             fwrite($process['pipes'][0], $length . $data);
+            return $process['pid'];
         }
+
+        return null;
     }
 
     /**
@@ -246,10 +262,10 @@ class ForkMan
     {
         while (true) {
             $index = $this->check();
-            if (isset($this->processPool[$index])) {
-                $this->processPool[$index]['status'] = false;
+            if (isset($this->procPool[$index])) {
+                $this->procPool[$index]['idle'] = false;
                 $this->idleCount++;
-                return $this->processPool[$index];
+                return $this->procPool[$index];
             }
             // sleep 50 ms
             usleep(50000);
@@ -266,21 +282,25 @@ class ForkMan
     private function check()
     {
         $index = -1;
-        foreach ($this->processPool as $key => &$process) {
+        foreach ($this->procPool as $key => &$process) {
             $this->checkProcessAlive($process);
-            if (!$process['status']) {
-                echo stream_get_contents($process['pipes'][2]);
-                $result = stream_get_contents($process['pipes'][1]);
+            if (!$process['idle']) {
+                echo stream_get_contents($process['pipes'][2]); // std error
+                $result = stream_get_contents($process['pipes'][1]); // std output
                 if (!empty($result)) {
-                    $process['status'] = true;
+                    $process['idle'] = true;
                     $this->idleCount--;
 
                     if (is_callable($process['callback'])) {
-                        $process['callback'](json_decode($result, true));
+                        $data = json_decode($result, true);
+                        if (json_last_error()) {
+                            $data = $result;
+                        }
+                        $process['callback']($data, $this);
                     }
                 }
             }
-            if ($process['status'] && $index < 0) {
+            if ($process['idle'] && $index < 0) {
                 $index = $key;
             }
         }
@@ -300,7 +320,7 @@ class ForkMan
 
             $this->killProcess($process);
             $this->log('close ' . $process['pid']);
-            if (!$process['status']) {
+            if (!$process['idle']) {
                 $this->idleCount--;
             }
             $process = $this->createProcess();
@@ -379,13 +399,13 @@ class ForkMan
     private function killAllProcess()
     {
         $killStatus = true;
-        foreach ($this->processPool as &$process) {
+        foreach ($this->procPool as &$process) {
             $status = $this->killProcess($process);
             if ($status) {
-                $this->log('close success: ' . $process['pid']);
-                !$process['status'] && $this->idleCount--;
+                $this->log('kill success: ' . $process['pid']);
+                !$process['idle'] && $this->idleCount--;
             } else {
-                $this->log('close failed: ' . $process['pid']);
+                $this->log('kill failed: ' . $process['pid']);
                 $killStatus = false;
             }
         }

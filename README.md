@@ -23,7 +23,6 @@ $fm->master(function (ForkMan $fm) {
 })->slave(function ($params, ForkMan $fm) {
     $fm->log($params);
 });
-
 ```
 
 ## License
