@@ -12,18 +12,14 @@
   "license": "MIT",
   "authors": [
     {
-      "name": "Upfor Club",
-      "email": "team@upfor.club",
-      "homepage": "https://upfor.club"
-    },
-    {
-      "name": "Shocker Li",
+      "name": "Jioby",
       "email": "shockerli@upfor.club",
-      "homepage": "http://shockerli.net"
+      "homepage": "https://shockerli.net"
     }
   ],
   "require": {
-    "php": ">=5.5"
+    "php": ">=5.5",
+    "ext-json": "*"
   },
   "autoload": {
     "psr-4": {

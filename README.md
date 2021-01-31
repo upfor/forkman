@@ -1,13 +1,16 @@
 # ForkMan
+
 > A lightest process manager(inspired by [SimpleFork](https://github.com/SegmentFault/SimpleFork))
 
 ## Install
-```
-$ composer require upfor/forkman
+
+```bash
+composer require upfor/forkman
 ```
 
 ## Example
-```
+
+```php
 <?php
 
 use Upfor\ForkMan\ForkMan;
@@ -26,4 +29,5 @@ $fm->master(function (ForkMan $fm) {
 ```
 
 ## License
+
 **ForkMan** is under the [MIT](LICENSE) license.

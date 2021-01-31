@@ -3,7 +3,7 @@
 namespace Upfor\ForkMan;
 
 /**
- * ForkMan
+ * ForkMan - A lightest process manager
  */
 class ForkMan
 {
@@ -69,7 +69,7 @@ class ForkMan
             $name = end($name);
         }
 
-        $this->name = $name;
+        $this->name    = $name;
         $this->procNum = $procNum;
 
         if (!empty($_SERVER['argv']) && false !== array_search(static::$slaveLabel, $_SERVER['argv'])) {
@@ -80,7 +80,7 @@ class ForkMan
     /**
      * Execute only in master process
      *
-     * @param  callable $masterHandler
+     * @param  callable $masterHandler master process callback, which can be call_user_func() execute
      * @return $this
      */
     public function master(callable $masterHandler)
@@ -100,7 +100,7 @@ class ForkMan
      */
     private function createMaster($limit)
     {
-        !$this->slaveCmd && $this->slaveCmd = $this->getCmd();
+        !$this->slaveCmd && $this->slaveCmd = $this->currentCmd();
 
         @cli_set_process_title($this->name . ':' . 'master');
 
@@ -118,11 +118,11 @@ class ForkMan
      *
      * @return string
      */
-    private function getCmd()
+    private function currentCmd()
     {
         $prefix = empty($this->prefix) ? (!empty($_SERVER['_']) ? realpath($_SERVER['_']) : '/usr/bin/env php') : $this->prefix;
-        $mixed = array_merge([$prefix, $_SERVER['PHP_SELF']], $_SERVER['argv']);
-        $mixed = array_filter($mixed, function ($item) {
+        $mixed  = array_merge([$prefix, $_SERVER['PHP_SELF']], $_SERVER['argv']);
+        $mixed  = array_filter($mixed, function ($item) {
             return strpos($item, './') !== 0;
         });
 
@@ -141,20 +141,21 @@ class ForkMan
             ['pipe', 'w'], // std output
             ['pipe', 'w'], // std error
         ];
-        $res = proc_open($this->slaveCmd . ' ' . static::$slaveLabel, $desc, $pipes, getcwd());
+        $res  = proc_open($this->slaveCmd . ' ' . static::$slaveLabel, $desc, $pipes, getcwd());
 
         $status = proc_get_status($res);
         if (!isset($status['pid'])) {
             $this->log('process create failed');
+
             return $this->createProcess();
         }
 
-        $pid = $status['pid'];
+        $pid     = $status['pid'];
         $process = [
-            'res' => $res,
-            'pipes' => $pipes,
-            'idle' => true, // process is idling
-            'pid' => $pid,
+            'res'      => $res,
+            'pipes'    => $pipes,
+            'idle'     => true, // process is idling
+            'pid'      => $pid,
             'callback' => null, // call when the slave process finished
         ];
 
@@ -163,6 +164,7 @@ class ForkMan
         stream_set_blocking($pipes[2], 0);
 
         $this->log('start ' . $pid);
+
         return $process;
     }
 
@@ -189,7 +191,7 @@ class ForkMan
     /**
      * Execute only in slave process
      *
-     * @param  callable $slaveHandler
+     * @param  callable $slaveHandler slave process callback, which can be call_user_func() execute
      * @return $this
      */
     public function slave(callable $slaveHandler)
@@ -211,7 +213,7 @@ class ForkMan
 
         while (true) {
             // listen input from master
-            $fp = @fopen('php://stdin', 'r');
+            $fp   = @fopen('php://stdin', 'r');
             $recv = @fread($fp, 8); // read content length
             $size = intval(rtrim($recv));
             $data = @fread($fp, $size);
@@ -239,14 +241,15 @@ class ForkMan
     public function submit($data, $callback = null)
     {
         if (!$this->isSlave) {
-            $process = &$this->getAvailableProcess();
+            $process             = &$this->getAvailableProcess();
             $process['callback'] = $callback;
-            $data = json_encode($data);
-            $length = strlen($data);
-            $length = str_pad($length . '', 8, ' ', STR_PAD_RIGHT);
+            $data                = json_encode($data);
+            $length              = strlen($data);
+            $length              = str_pad($length . '', 8, ' ', STR_PAD_RIGHT);
 
             // send to slave process, with length and content
             fwrite($process['pipes'][0], $length . $data);
+
             return $process['pid'];
         }
 
@@ -265,13 +268,12 @@ class ForkMan
             if (isset($this->procPool[$index])) {
                 $this->procPool[$index]['idle'] = false;
                 $this->idleCount++;
+
                 return $this->procPool[$index];
             }
             // sleep 50 ms
             usleep(50000);
         }
-
-        return null;
     }
 
     /**
@@ -285,7 +287,7 @@ class ForkMan
         foreach ($this->procPool as $key => &$process) {
             $this->checkProcessAlive($process);
             if (!$process['idle']) {
-                echo stream_get_contents($process['pipes'][2]); // std error
+                echo stream_get_contents($process['pipes'][2]);      // std error
                 $result = stream_get_contents($process['pipes'][1]); // std output
                 if (!empty($result)) {
                     $process['idle'] = true;
@@ -304,6 +306,7 @@ class ForkMan
                 $index = $key;
             }
         }
+
         return $index;
     }
 
@@ -358,6 +361,7 @@ class ForkMan
             }
 
             $this->check();
+
             return true;
         }
 
@@ -383,6 +387,7 @@ class ForkMan
                 $killStatus = $this->killAllProcess();
                 if ($killStatus) {
                     $this->log('all slave processes exited(' . ($outed ? 'timeout' : 'idle') . ')');
+
                     return;
                 }
             }
@@ -399,7 +404,7 @@ class ForkMan
     private function killAllProcess()
     {
         $killStatus = true;
-        foreach ($this->procPool as &$process) {
+        foreach ($this->procPool as $process) {
             $status = $this->killProcess($process);
             if ($status) {
                 $this->log('kill success: ' . $process['pid']);
