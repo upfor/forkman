@@ -28,6 +28,9 @@ $fm->master(function (ForkMan $fm) {
 });
 ```
 
+## Architecture
+![architecture.png](architecture.png)
+
 ## License
 
 **ForkMan** is under the [MIT](LICENSE) license.
