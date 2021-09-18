@@ -8,7 +8,7 @@ use Upfor\ForkMan\ForkMan;
 $fm = new ForkMan(2);
 $fm->master(function (ForkMan $fm) {
     while ($fm->loop(500)) {
-        $fm->submit('https://api.myjson.com/bins/ladzj', function ($data) {
+        $fm->submit('https://v1.hitokoto.cn', function ($data) {
             echo $data, "\n";
         });
     }

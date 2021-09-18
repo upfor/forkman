@@ -2,6 +2,10 @@
 
 > A lightest process manager(inspired by [SimpleFork](https://github.com/SegmentFault/SimpleFork))
 
+## Requirements
+- PHP >= 5.5
+- functions: `proc_open`
+
 ## Install
 
 ```bash

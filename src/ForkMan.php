@@ -4,6 +4,8 @@ namespace Upfor\ForkMan;
 
 /**
  * ForkMan - A lightest process manager
+ *
+ * @see https://github.com/upfor/forkman
  */
 class ForkMan
 {
@@ -172,6 +174,10 @@ class ForkMan
      * Logger
      *
      * @param  mixed $info
+     *                    scalar: string/int/float
+     *                    array: auto convert to json strings
+     *                    object: var_export the variables
+     *                    sprintf: eg: $fm->log('TaskId: %d', $taskId);
      */
     public function log($info)
     {
@@ -180,6 +186,7 @@ class ForkMan
         } elseif (!is_scalar($info)) {
             $info = json_encode($info, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
         }
+
         $args = func_get_args();
         $line = count($args) > 1 ? call_user_func_array('sprintf', $args) : $info;
 
@@ -234,23 +241,23 @@ class ForkMan
     /**
      * Master submit task to slave
      *
-     * @param  mixed    $data
-     * @param  callable $callback
-     * @return int
+     * @param  mixed    $data     the params transmit to slave handler
+     * @param  callable $callback called after the slave process finishes processing
+     * @return int|null
      */
     public function submit($data, $callback = null)
     {
         if (!$this->isSlave) {
             $process             = &$this->getAvailableProcess();
             $process['callback'] = $callback;
-            $data                = json_encode($data);
+            $data                = json_encode($data); // transmit by json, compatible all types
             $length              = strlen($data);
             $length              = str_pad($length . '', 8, ' ', STR_PAD_RIGHT);
 
             // send to slave process, with length and content
             fwrite($process['pipes'][0], $length . $data);
 
-            return $process['pid'];
+            return (int)$process['pid'];
         }
 
         return null;
@@ -340,8 +347,12 @@ class ForkMan
     {
         if (function_exists('proc_terminate')) {
             return @proc_terminate($process['res']);
-        } elseif (function_exists('posix_kill')) {
+        }
+        if (function_exists('posix_kill')) {
             return @posix_kill($process['pid'], 9);
+        }
+        if (function_exists('proc_close')) {
+            return @proc_close($process['res']) != -1;
         }
 
         return false;
@@ -372,6 +383,8 @@ class ForkMan
      * Wait all process idled or timeout
      *
      * @param  int $timeout (unit: ms)
+     *                      0:  wait all processes to idle
+     *                      >0: timeout, kill all process
      */
     public function wait($timeout = 0)
     {
@@ -397,7 +410,7 @@ class ForkMan
     }
 
     /**
-     * Kill all
+     * Kill all process
      *
      * @return bool
      */
